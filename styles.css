@@ -373,9 +373,6 @@ html[data-theme="dark"] .theme-icon-moon { display: block; }
   font-size: .74rem;
 }
 .footer-note { margin-left: 8px; }
-.footer-links { display: flex; flex-wrap: wrap; gap: 14px; }
-.footer-links a { color: var(--ak-text-dim); }
-.footer-links a:hover { color: var(--ak-primary); }
 .footer-demo { margin-top: 8px; color: var(--warn); font-size: .72rem; }
 
 @keyframes shimmer {
