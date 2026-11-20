@@ -74,4 +74,5 @@ python3 -m http.server 4010
 
 - 前端不直接请求 UptimeRobot，key 不会进入浏览器。
 - UptimeRobot v2 是 legacy API，仍可用；后续可以迁移到 v3。
+- 使用本地 MDUI 2 组件（`assets/mdui.min.css`、`assets/mdui.global.min.js`、Material Icons 字体），顶栏、卡片、4px 圆角和浅/深色跟随主站。
 - 不引用外部 CDN、字体或 JS 库。

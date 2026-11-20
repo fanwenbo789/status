@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="mdui-theme-light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,52 +16,59 @@
           theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
         document.documentElement.dataset.theme = theme;
+        document.documentElement.classList.add('mdui-theme-' + theme);
       } catch (e) {}
     })();
   </script>
+  <link rel="stylesheet" href="./assets/mdui.min.css">
   <link rel="stylesheet" href="./styles.css">
+  <script src="./assets/mdui.global.min.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="shell topbar-inner">
-      <a class="brand" href="https://www.akabane.cn/" aria-label="返回赤羽 Akabane 博客">
-        <span class="brand-mark" aria-hidden="true"></span>
-        <span>Akabane <strong>Status</strong></span>
+  <mdui-top-app-bar class="status-appbar">
+    <div class="appbar-inner">
+      <a class="brand-link" href="https://www.akabane.cn/" aria-label="返回赤羽 Akabane 博客">
+        <mdui-card class="brand-card" variant="elevated" clickable>
+          <span class="brand-text">Akabane <span>Status</span></span>
+        </mdui-card>
       </a>
-      <div class="topbar-actions">
+      <div class="appbar-actions">
         <span id="demo-badge" class="demo-badge" hidden>预览数据</span>
-        <button id="theme-toggle" class="icon-button" type="button" aria-label="切换深色模式">
-          <svg class="icon-sun" viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+        <mdui-button variant="text" href="https://www.akabane.cn/">博客</mdui-button>
+        <mdui-button-icon id="theme-toggle" aria-label="切换深色模式">
+          <svg class="theme-icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
             <circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/>
             <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"
                   fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
           </svg>
-          <svg class="icon-moon" viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+          <svg class="theme-icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
             <path d="M20.5 14.7A8.6 8.6 0 0 1 9.3 3.5a8.8 8.8 0 1 0 11.2 11.2z"
                   fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
           </svg>
-        </button>
+        </mdui-button-icon>
       </div>
     </div>
-  </header>
+  </mdui-top-app-bar>
 
-  <main class="shell">
-    <section class="hero">
-      <p class="eyebrow">服务状态</p>
-      <h1>系统运行状态</h1>
-      <p class="hero-sub">这里汇总 Akabane 相关站点的可用性、响应时间和近期事件。</p>
+  <main class="status-main">
+    <header class="page-head">
+      <h1>服务状态</h1>
+      <p>这里汇总 Akabane 相关站点的可用性、响应时间和近期事件。</p>
+    </header>
+
+    <mdui-card class="overall-card" variant="elevated">
       <div id="overall" class="overall is-loading" role="status" aria-live="polite">
         <span class="status-dot" aria-hidden="true"></span>
         <span class="overall-text">正在获取状态…</span>
       </div>
-      <p class="hero-meta">
+      <p class="page-meta">
         <span id="updated">最后更新：—</span>
         <span class="meta-sep" aria-hidden="true">·</span>
         <span>每 60 秒自动刷新</span>
       </p>
-    </section>
+    </mdui-card>
 
-    <section class="section" aria-labelledby="monitors-title">
+    <section class="status-section" aria-labelledby="monitors-title">
       <div class="section-head">
         <h2 id="monitors-title">监控项</h2>
         <span id="monitor-count" class="section-count"></span>
@@ -69,26 +76,37 @@
       <div id="monitors" class="monitor-grid" aria-live="polite">
         <div class="skeleton-card" aria-hidden="true"></div>
         <div class="skeleton-card" aria-hidden="true"></div>
-        <div class="skeleton-card" aria-hidden="true"></div>
       </div>
     </section>
 
-    <section class="section" aria-labelledby="events-title">
+    <section class="status-section" aria-labelledby="events-title">
       <div class="section-head">
         <h2 id="events-title">近期事件</h2>
         <span id="event-count" class="section-count"></span>
       </div>
-      <div id="events" class="events" aria-live="polite">
+      <mdui-card id="events" class="events" variant="elevated" aria-live="polite">
         <p class="empty">正在获取事件…</p>
-      </div>
+      </mdui-card>
     </section>
 
     <p id="error" class="error" role="alert" hidden></p>
   </main>
 
-  <footer class="footer shell">
-    <p>数据来自 UptimeRobot · <a href="https://www.akabane.cn/">返回博客</a></p>
-    <p id="footer-demo" class="footer-demo" hidden>当前为本地预览数据，不是真实监控结果。</p>
+  <footer class="status-footer">
+    <mdui-card class="footer-card" variant="elevated">
+      <div class="footer-inner">
+        <div>
+          <span>© <span id="year">2026</span> Akabane Status</span>
+          <span class="footer-note">数据来自 UptimeRobot</span>
+        </div>
+        <div class="footer-links">
+          <a href="https://www.akabane.cn/">博客</a>
+          <a href="https://www.akabane.cn/subscribe/">订阅</a>
+          <a href="https://www.akabane.cn/sitemap.xml">站点地图</a>
+        </div>
+      </div>
+      <p id="footer-demo" class="footer-demo" hidden>当前为本地预览数据，不是真实监控结果。</p>
+    </mdui-card>
   </footer>
 
   <script src="./app.js"></script>

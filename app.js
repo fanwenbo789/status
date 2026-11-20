@@ -128,7 +128,9 @@
   }
 
   function renderMonitor(monitor) {
-    var card = el('article', 'monitor-card');
+    var card = document.createElement('mdui-card');
+    card.className = 'monitor-card';
+    card.setAttribute('variant', 'elevated');
     var head = el('div', 'monitor-head');
     var title = el('div', 'monitor-title');
     title.appendChild(el('h3', 'monitor-name', monitor.name || '未命名监控'));
@@ -219,8 +221,10 @@
     state.data = data;
     var monitors = Array.isArray(data.monitors) ? data.monitors : [];
     $('#error').hidden = true;
-    $('#demo-badge').hidden = !data.demo;
-    $('#footer-demo').hidden = !data.demo;
+    var demoBadge = $('#demo-badge');
+    var footerDemo = $('#footer-demo');
+    if (demoBadge) demoBadge.hidden = !data.demo;
+    if (footerDemo) footerDemo.hidden = !data.demo;
     $('#monitor-count').textContent = monitors.length + ' 项';
     renderOverall(data, monitors);
     renderMonitors(monitors);
@@ -274,7 +278,10 @@
   }
 
   function applyTheme(theme) {
-    document.documentElement.dataset.theme = theme;
+    var root = document.documentElement;
+    root.dataset.theme = theme;
+    root.classList.remove('mdui-theme-light', 'mdui-theme-dark');
+    root.classList.add('mdui-theme-' + theme);
     var button = $('#theme-toggle');
     button.setAttribute('aria-label', theme === 'dark' ? '切换浅色模式' : '切换深色模式');
   }
@@ -289,6 +296,8 @@
     });
   }
 
+  var year = $('#year');
+  if (year) year.textContent = String(new Date().getFullYear());
   initTheme();
   load();
   state.timer = setInterval(load, 60000);
