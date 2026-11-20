@@ -202,7 +202,7 @@
       row.appendChild(el('time', 'event-time', formatTime(log.datetime)));
 
       var main = el('div', 'event-main');
-      main.appendChild(el('div', 'event-title', log.monitor + ' · ' + type.text));
+      main.appendChild(el('div', 'event-title', log.monitor + ' / ' + type.text));
       var detail = log.reason;
       if (!detail && log.type === 1 && log.duration) {
         detail = '持续 ' + formatDuration(log.duration);

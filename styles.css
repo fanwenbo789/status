@@ -207,7 +207,13 @@ html[data-theme="dark"] .theme-icon-moon { display: block; }
   color: var(--ak-text-dim);
   font-size: .74rem;
 }
-.meta-sep { opacity: .55; }
+.meta-divider {
+  flex: none;
+  width: 1px;
+  height: .9em;
+  background: currentColor;
+  opacity: .28;
+}
 
 .status-section { margin-top: 34px; }
 .section-head {
