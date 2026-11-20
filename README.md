@@ -9,12 +9,12 @@ cd status
 python3 -m http.server 4010
 ```
 
-打开 <http://127.0.0.1:4010/>。仓库里的 `data.json` 是预览数据，页面会显示“预览数据”标记。
+打开 <http://127.0.0.1:4010/>。仓库初始的 `data.json` 是预览数据；运行 `sync.py` 后会替换成真实监控数据，页面不再显示“预览数据”标记。
 
 ## 对接 UptimeRobot
 
 1. 在 UptimeRobot 的 Integrations & API → API 创建 **read-only** 或 **monitor-specific** API key。
-2. 写入本地受保护文件，不要提交：
+2. 写入本地受保护文件，不要提交；如果是 monitor-specific key，只会返回对应的一个监控项：
 
    ```bash
    printf '%s' '你的 API key' > .uptimerobot_key
