@@ -1,0 +1,38 @@
+name: Sync UptimeRobot status
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: status-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch UptimeRobot data
+        env:
+          UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
+        run: python3 sync.py
+
+      - name: Commit data
+        run: |
+          git config user.name 'fanwenbo789'
+          git config user.email '3990891437@qq.com'
+          git add data.json
+          if git diff --cached --quiet; then
+            echo 'no changes'
+            exit 0
+          fi
+          git commit -m "更新状态数据 $(date -u +%F)"
+          git push origin HEAD:main

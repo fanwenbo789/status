@@ -1,0 +1,19 @@
+{
+ "generated": "2026-11-20T14:09:31.110971Z",
+ "overall": "up",
+ "monitors": [
+  {
+   "id": 804749362,
+   "name": "qq.com",
+   "url": "https://3990891437@qq.com",
+   "status": 2,
+   "uptime": {
+    "day": 100.0,
+    "week": 100.0,
+    "month": 100.0
+   },
+   "response_time": 1385.0,
+   "logs": []
+  }
+ ]
+}
