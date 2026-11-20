@@ -202,6 +202,7 @@ html[data-theme="dark"] .theme-icon-moon { display: block; }
 .page-meta {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   margin-top: 8px;
   color: var(--ak-text-dim);
