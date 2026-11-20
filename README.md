@@ -1,78 +1,56 @@
 # status
 
-赤羽 Akabane 的服务状态页，监控数据来自 UptimeRobot。
+赤羽 Akabane 的服务状态页，浏览器直接读取 UptimeRobot 的只读 API。
 
 ## 本地预览
 
 ```bash
 cd status
-python3 -m http.server 4010
+python3 serve.py
 ```
 
-打开 <http://127.0.0.1:4010/>。仓库初始的 `data.json` 是预览数据；运行 `sync.py` 后会替换成真实监控数据，页面不再显示“预览数据”标记。
+打开 <http://127.0.0.1:4010/>。
 
-## 对接 UptimeRobot
+`serve.py` 默认只监听 `127.0.0.1`，并拒绝 `.git`、`.uptimerobot_key` 等点文件和目录列表。不要用 `python3 -m http.server` 直接服务仓库根目录，它会把点文件和 `.git` 一起暴露出去。
 
-1. 在 UptimeRobot 的 Integrations & API → API 创建 **read-only** 或 **monitor-specific** API key。
-2. 写入本地受保护文件，不要提交；如果是 monitor-specific key，只会返回对应的一个监控项：
+## 数据来源
 
-   ```bash
-   printf '%s' '你的 API key' > .uptimerobot_key
-   chmod 600 .uptimerobot_key
-   ```
+页面每 60 秒调用一次 UptimeRobot v2 `getMonitors`：
 
-   也可以使用环境变量 `UPTIMEROBOT_API_KEY`。
-3. 拉取数据：
+- `logs=1&logs_limit=50`
+- `response_times=1&response_times_limit=1`
+- `custom_uptime_ratios=1-7-30`
 
-   ```bash
-   python3 sync.py
-   ```
+API key 在 `config.js`：
 
-   脚本调用 v2 `getMonitors`，写入 `data.json`，不会把 key 写进页面或 JSON。
-
-## 数据格式
-
-```json
-{
-  "generated": "2026-11-20T08:45:00Z",
-  "overall": "up",
-  "monitors": [
-    {
-      "id": 1,
-      "name": "Akabane Blog",
-      "url": "https://www.akabane.cn/",
-      "status": 2,
-      "uptime": { "day": 100, "week": 99.99, "month": 99.97 },
-      "response_time": 182,
-      "logs": []
-    }
-  ]
-}
+```js
+window.STATUS_CONFIG = {
+  uptimerobotKey: 'ur...',
+  refreshSeconds: 60
+};
 ```
 
-`status` 使用 UptimeRobot 原值：`0` 暂停、`1` 待检查、`2` 正常、`8` 疑似故障、`9` 故障。
+**`config.js` 是公开文件。** 只能使用 **read-only** 或 monitor-specific key，不要使用可写 key。任何人查看源码都能拿到它；如果被滥用，请在 UptimeRobot 后台轮换，并更新 `config.js`。
 
-## GitHub Actions
-
-`.github/workflows/sync.yml` 目前只支持手动触发。上线前再决定刷新频率：
-
-- 定时跑会频繁提交 `data.json`，需要接受提交历史增长
-- 更接近实时的做法是用 Vercel/Cloudflare 的 serverless 代理，把 key 放在服务端，由页面请求代理
-
-在仓库 Settings → Secrets and variables → Actions 添加 `UPTIMEROBOT_API_KEY`。
+UptimeRobot v2 对 `get*` 接口返回 `access-control-allow-origin: *`，所以浏览器可以直接请求。免费额度约 10 请求/分钟，默认 60 秒刷新，单标签页足够。
 
 ## 部署
 
-页面全部使用相对路径，可以放在：
+纯静态站点，无构建步骤。需要发布的文件：
 
-- GitHub Pages 的 `https://fanwenbo789.github.io/status/`
-- 自定义域名，如 `status.akabane.cn`
+- `index.html`
+- `app.js`
+- `config.js`
+- `styles.css`
+- `assets/`
+- `.nojekyll`（GitHub Pages）
 
-如果使用 GitHub Pages，需要 public 仓库；`.nojekyll` 已存在。
+可以部署到 GitHub Pages 根目录，或自定义域名如 `status.akabane.cn`。
 
 ## 说明
 
-- 前端不直接请求 UptimeRobot，key 不会进入浏览器。
+- 页面不读取 `data.json`，也不需要 `sync.py` 或 GitHub Actions；这些旧文件已从当前版本移除，需要时可以从 git 历史恢复。
 - UptimeRobot v2 是 legacy API，仍可用；后续可以迁移到 v3。
-- 使用本地 MDUI 2 组件（`assets/mdui.min.css`、`assets/mdui.global.min.js`、Material Icons 字体），顶栏、卡片、4px 圆角和浅/深色跟随主站。
+- 使用本地 MDUI 2 组件（`assets/mdui.min.css`、`assets/mdui.global.min.js`），顶栏、卡片、4px 圆角和浅/深色跟随主站。
 - 不引用外部 CDN、字体或 JS 库。
+- 如果以后要隐藏 key，改用 Cloudflare Worker/Vercel 代理，把 key 放在服务端。
