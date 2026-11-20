@@ -2,6 +2,8 @@
 
 赤羽 Akabane 的服务状态页，浏览器直接读取 UptimeRobot 的只读 API。
 
+线上：<https://fanwenbo789.github.io/status/>
+
 ## 本地预览
 
 ```bash
