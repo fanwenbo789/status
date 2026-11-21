@@ -83,15 +83,16 @@ def normalize(monitors):
                 "type": event_type,
                 "text": EVENT_TYPES.get(event_type, "事件"),
                 "datetime": datetime,
-                "duration": int(log.get("duration") or 0),
                 "reason": str(reason or ""),
             })
-    events.sort(key=lambda item: item["datetime"], reverse=True)
+    events.sort(key=lambda item: (item["datetime"], item["monitor"], item["type"]), reverse=True)
     return events[:LIMIT]
 
 
 def main():
     monitors = fetch_monitors(read_key())
+    if not monitors:
+        raise SystemExit("UptimeRobot returned no monitors")
     events = normalize(monitors)
     payload = {"events": events}
     temp = EVENTS.with_name(EVENTS.name + ".tmp")

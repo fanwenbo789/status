@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pages: write
 
 concurrency:
   group: status-events
@@ -14,6 +15,7 @@ concurrency:
 
 jobs:
   sync:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,8 +28,10 @@ jobs:
         run: python3 sync_events.py
 
       - name: Commit events
+        id: commit
         run: |
           if git diff --quiet -- events.json; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
             echo 'no changes'
             exit 0
           fi
@@ -36,3 +40,17 @@ jobs:
           git add events.json
           git commit -m '更新近期事件'
           git push origin HEAD:main
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+
+      - name: Trigger Pages build
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for i in 1 2 3; do
+            if gh api --method POST "repos/${{ github.repository }}/pages/builds"; then
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
