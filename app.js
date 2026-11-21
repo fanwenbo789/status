@@ -143,10 +143,12 @@
     var raw = monitor.custom_uptime_ranges;
     if (!raw || !starts || !starts.length) return [];
     var parts = String(raw).split('-');
+    var created = Number(monitor.create_datetime) || 0;
     return starts.map(function (start, index) {
       var text = String(parts[index] === undefined ? '' : parts[index]).trim();
       var value = text === '' ? null : Number(text);
       if (!isFinite(value) || value < 0) value = null;
+      if (created > 0 && start + 86400 <= created) value = null;
       return { start: start, uptime: value };
     });
   }
@@ -277,6 +279,9 @@
     axis.appendChild(el('span', null, '30 天前'));
     axis.appendChild(el('span', null, '今天'));
     box.appendChild(axis);
+    if (days.some(function (day) { return day.uptime === null; })) {
+      box.appendChild(el('p', 'day-note', '灰色为无数据'));
+    }
     return box;
   }
 
