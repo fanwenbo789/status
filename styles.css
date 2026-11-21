@@ -327,19 +327,27 @@ html[data-theme="dark"] .theme-icon-moon { display: block; }
   line-height: 1.35;
 }
 .monitor-globe {
+  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 16px;
+  height: 16px;
   border-radius: 3px;
   color: var(--ak-text-dim);
   line-height: 0;
+  transform: translateY(1px);
+}
+.monitor-globe::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 4px;
 }
 .monitor-globe:focus-visible {
   outline: 2px solid var(--ak-link);
-  outline-offset: 2px;
+  outline-offset: 4px;
 }
 .monitor-globe:hover {
   color: var(--ak-link);
@@ -511,13 +519,19 @@ html[data-theme="dark"] .theme-icon-moon { display: block; }
 }
 .event {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 12px;
+  align-items: start;
   padding: 13px 20px;
 }
 .event + .event { border-top: 1px solid var(--ak-border); }
-.event-time { color: var(--ak-text-dim); font-size: .72rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.event-time {
+  grid-column: 1 / -1;
+  color: var(--ak-text-dim);
+  font-size: .72rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .event-main { min-width: 0; }
 .event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .86rem; font-weight: 600; }
 .event-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; color: var(--ak-text-dim); font-size: .72rem; }
@@ -636,7 +650,7 @@ html[data-theme="dark"] .theme-icon-moon { display: block; }
 
 @media (max-width: 700px) {
   .monitor-grid { grid-template-columns: 1fr; }
-  .event { grid-template-columns: 76px minmax(0, 1fr) auto; gap: 10px; }
+  .event { grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; }
 }
 
 @media (max-width: 430px) {
@@ -649,8 +663,7 @@ html[data-theme="dark"] .theme-icon-moon { display: block; }
   .latency { margin-top: 14px; }
   .latency-chart { height: 44px; }
   .skeleton-card { min-height: 236px; padding: 15px 16px; }
-  .event { grid-template-columns: 1fr auto; }
-  .event-time { grid-column: 1 / -1; }
+  .event { grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; }
   .status-footer { padding-left: 14px; padding-right: 14px; }
 }
 
