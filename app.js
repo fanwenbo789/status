@@ -325,9 +325,6 @@
     }
     box.appendChild(detail);
 
-    if (days.some(function (day) { return day.uptime === null; })) {
-      box.appendChild(el('p', 'day-note', '灰色为无数据'));
-    }
     return box;
   }
 

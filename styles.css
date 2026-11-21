@@ -359,7 +359,6 @@ html[data-theme="dark"] .theme-icon-moon { display: block; }
   color: var(--ak-text-dim);
   font-size: .62rem;
 }
-.day-note { margin-top: 3px; color: var(--ak-text-dim); font-size: .62rem; }
 .day-detail {
   display: flex;
   flex-wrap: wrap;
