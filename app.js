@@ -20,7 +20,9 @@
     98: { text: '开始监控', cls: 'unknown' },
     99: { text: '暂停监控', cls: 'paused' }
   };
-  var UPTIME_LABELS = [['day', '24 小时'], ['week', '7 天'], ['month', '30 天']];
+  var DAY_COUNT = 30;
+  var LATENCY_BUCKETS = 48;
+  var LATENCY_AVG_MIN = 30;
   var state = { data: null, loading: false, timer: null, signature: null };
 
   function el(tag, className, text) {
@@ -34,6 +36,16 @@
     while (node.firstChild) node.removeChild(node.firstChild);
   }
 
+  function svgEl(tag, attrs) {
+    var node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function (key) {
+        node.setAttribute(key, attrs[key]);
+      });
+    }
+    return node;
+  }
+
   function number(value) {
     var n = Number(value);
     return isFinite(n) ? n : null;
@@ -43,11 +55,6 @@
     if (value === null) return '—';
     if (value >= 99.995) return '100%';
     return value.toFixed(2) + '%';
-  }
-
-  function formatResponse(value) {
-    if (value === null) return '';
-    return '平均响应 ' + Math.round(value) + ' ms';
   }
 
   function formatDuration(seconds) {
@@ -101,6 +108,24 @@
     return isFinite(n) ? n : 1;
   }
 
+  function buildDailyRanges(count) {
+    var day = 86400;
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var todayStart = Math.floor(today.getTime() / 1000);
+    var now = Math.floor(Date.now() / 1000);
+    var starts = [];
+    var ranges = [];
+    for (var i = count - 1; i >= 0; i--) {
+      var start = todayStart - i * day;
+      var end = Math.min(start + day, now);
+      if (end <= start) end = start + 1;
+      starts.push(start);
+      ranges.push(start + '_' + end);
+    }
+    return { query: ranges.join('-'), starts: starts };
+  }
+
   function parseUptimes(monitor) {
     var raw = monitor.custom_uptime_ratio;
     if (raw === undefined || raw === null) raw = monitor.custom_uptime_ratios;
@@ -112,6 +137,18 @@
     });
     while (values.length < 3) values.push(null);
     return { day: values[0], week: values[1], month: values[2] };
+  }
+
+  function parseDays(monitor, starts) {
+    var raw = monitor.custom_uptime_ranges;
+    if (!raw || !starts || !starts.length) return [];
+    var parts = String(raw).split('-');
+    return starts.map(function (start, index) {
+      var text = String(parts[index] === undefined ? '' : parts[index]).trim();
+      var value = text === '' ? null : Number(text);
+      if (!isFinite(value) || value < 0) value = null;
+      return { start: start, uptime: value };
+    });
   }
 
   function parseResponseTime(monitor) {
@@ -131,6 +168,17 @@
     return null;
   }
 
+  function parseLatency(monitor) {
+    return (monitor.response_times || []).map(function (point) {
+      var datetime = Number(point && point.datetime);
+      var value = Number(point && point.value);
+      if (!isFinite(datetime) || datetime <= 0 || !isFinite(value) || value < 0) return null;
+      return { datetime: datetime, value: value };
+    }).filter(function (point) { return point !== null; }).sort(function (a, b) {
+      return a.datetime - b.datetime;
+    });
+  }
+
   function normalizeLogs(monitor) {
     var logs = [];
     (monitor.logs || []).forEach(function (log) {
@@ -147,14 +195,16 @@
     return logs.slice(0, 20);
   }
 
-  function normalizeMonitor(monitor) {
+  function normalizeMonitor(monitor, starts) {
     return {
       id: monitor.id,
       name: monitor.friendly_name || '未命名监控',
       url: safeUrl(monitor.url),
       status: normalizeStatus(monitor.status),
       uptime: parseUptimes(monitor),
+      days: parseDays(monitor, starts),
       response_time: parseResponseTime(monitor),
+      latency: parseLatency(monitor),
       logs: normalizeLogs(monitor)
     };
   }
@@ -166,8 +216,10 @@
     return 'up';
   }
 
-  function normalize(payload) {
-    var monitors = (payload.monitors || []).map(normalizeMonitor);
+  function normalize(payload, starts) {
+    var monitors = (payload.monitors || []).map(function (monitor) {
+      return normalizeMonitor(monitor, starts);
+    });
     return {
       generated: new Date().toISOString(),
       overall: overallFor(monitors),
@@ -193,26 +245,136 @@
     $('#updated').textContent = formatGenerated(data && data.generated);
   }
 
-  function renderUptime(monitor) {
-    var grid = el('div', 'uptime-grid');
-    UPTIME_LABELS.forEach(function (pair) {
-      var key = pair[0];
-      var value = monitor.uptime && number(monitor.uptime[key]);
-      var item = el('div', 'uptime-item');
-      item.appendChild(el('span', 'uptime-label', pair[1]));
-      item.appendChild(el('span', 'uptime-value', formatPct(value)));
+  function renderDays(monitor) {
+    var days = monitor.days || [];
+    var summary = monitor.uptime && number(monitor.uptime.month);
+    var box = el('div', 'day-status');
+    var head = el('div', 'day-status-head');
+    head.appendChild(el('span', 'day-status-label', '30 天可用率'));
+    head.appendChild(el('span', 'day-status-value', formatPct(summary)));
+    box.appendChild(head);
 
-      var bar = el('div', 'uptime-bar');
-      var fill = el('span');
-      var pct = value === null ? 0 : Math.max(0, Math.min(100, value));
-      fill.style.width = pct + '%';
-      if (value !== null && value < 99) bar.classList.add('is-down');
-      else if (value !== null && value < 99.9) bar.classList.add('is-partial');
-      bar.appendChild(fill);
-      item.appendChild(bar);
-      grid.appendChild(item);
+    var bars = el('div', 'day-bars');
+    bars.setAttribute('aria-hidden', 'true');
+    days.forEach(function (day, index) {
+      var value = day.uptime;
+      var bar = el('span', 'day-bar');
+      if (value === null) bar.classList.add('is-empty');
+      else if (value < 99) bar.classList.add('is-down');
+      else if (value < 99.9) bar.classList.add('is-partial');
+      else bar.classList.add('is-up');
+
+      var date = new Date(day.start * 1000);
+      var label = (date.getMonth() + 1) + '/' + date.getDate();
+      var suffix = index === days.length - 1 ? '（今天，统计中）' : '';
+      bar.title = label + ' ' + (value === null ? '无数据' : formatPct(value)) + suffix;
+      bars.appendChild(bar);
     });
-    return grid;
+    box.appendChild(bars);
+
+    var axis = el('div', 'day-axis');
+    axis.setAttribute('aria-hidden', 'true');
+    axis.appendChild(el('span', null, '30 天前'));
+    axis.appendChild(el('span', null, '今天'));
+    box.appendChild(axis);
+    return box;
+  }
+
+  function renderLatency(monitor) {
+    var box = el('div', 'latency');
+    var avg = number(monitor.response_time);
+    var head = el('div', 'latency-head');
+    head.appendChild(el('span', 'latency-label', '24 小时延迟'));
+    head.appendChild(el('span', 'latency-value', avg === null ? '—' : '平均 ' + Math.round(avg) + ' ms'));
+    box.appendChild(head);
+
+    var points = monitor.latency || [];
+    if (points.length < 2) {
+      box.appendChild(el('p', 'latency-empty', '数据积累中'));
+      return box;
+    }
+
+    var width = 300;
+    var height = 48;
+    var pad = 4;
+    var values = points.map(function (point) { return point.value; });
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    if (max === min) {
+      min = Math.max(0, min - 1);
+      max = max + 1;
+    }
+    var span = max - min || 1;
+    var step = (width - pad * 2) / (points.length - 1);
+    var coords = points.map(function (point, index) {
+      return {
+        x: pad + index * step,
+        y: height - pad - ((point.value - min) / span) * (height - pad * 2)
+      };
+    });
+    var line = coords.map(function (point, index) {
+      return (index === 0 ? 'M' : 'L') + point.x.toFixed(1) + ' ' + point.y.toFixed(1);
+    }).join(' ');
+    var area = line + ' L' + (width - pad).toFixed(1) + ' ' + (height - pad) +
+      ' L' + pad + ' ' + (height - pad) + ' Z';
+    var gradientId = 'latency-gradient-' + String(monitor.id || 'monitor');
+
+    var svg = svgEl('svg', {
+      class: 'latency-chart',
+      viewBox: '0 0 ' + width + ' ' + height,
+      preserveAspectRatio: 'none',
+      role: 'img',
+      'aria-label': '24 小时延迟曲线，平均 ' + (avg === null ? '未知' : Math.round(avg) + ' 毫秒')
+    });
+
+    var defs = svgEl('defs');
+    var gradient = svgEl('linearGradient', {
+      id: gradientId,
+      x1: '0',
+      y1: '0',
+      x2: '0',
+      y2: '1'
+    });
+    gradient.appendChild(svgEl('stop', { offset: '0%', 'stop-color': 'currentColor', 'stop-opacity': '0.28' }));
+    gradient.appendChild(svgEl('stop', { offset: '100%', 'stop-color': 'currentColor', 'stop-opacity': '0' }));
+    defs.appendChild(gradient);
+    svg.appendChild(defs);
+    svg.appendChild(svgEl('path', { class: 'latency-area', d: area, fill: 'url(#' + gradientId + ')' }));
+    svg.appendChild(svgEl('path', { class: 'latency-line', d: line }));
+
+    if (avg !== null) {
+      var avgY = height - pad - ((avg - min) / span) * (height - pad * 2);
+      if (avgY >= 0 && avgY <= height) {
+        svg.appendChild(svgEl('line', {
+          class: 'latency-avg',
+          x1: pad,
+          y1: avgY.toFixed(1),
+          x2: width - pad,
+          y2: avgY.toFixed(1)
+        }));
+      }
+    }
+
+    var last = coords[coords.length - 1];
+    svg.appendChild(svgEl('line', {
+      class: 'latency-now',
+      x1: last.x.toFixed(1),
+      y1: 0,
+      x2: last.x.toFixed(1),
+      y2: height
+    }));
+
+    var title = svgEl('title');
+    title.textContent = '最低 ' + Math.round(min) + ' ms / 最高 ' + Math.round(max) + ' ms';
+    svg.appendChild(title);
+    box.appendChild(svg);
+
+    var axis = el('div', 'latency-axis');
+    axis.setAttribute('aria-hidden', 'true');
+    axis.appendChild(el('span', null, formatTime(points[0].datetime)));
+    axis.appendChild(el('span', null, formatTime(points[points.length - 1].datetime)));
+    box.appendChild(axis);
+    return box;
   }
 
   function renderMonitor(monitor) {
@@ -240,12 +402,8 @@
     head.appendChild(title);
     head.appendChild(pill);
     card.appendChild(head);
-    card.appendChild(renderUptime(monitor));
-
-    var response = number(monitor.response_time);
-    if (response !== null) {
-      card.appendChild(el('div', 'monitor-response', formatResponse(response)));
-    }
+    card.appendChild(renderDays(monitor));
+    card.appendChild(renderLatency(monitor));
     return card;
   }
 
@@ -355,14 +513,17 @@
   function fetchMonitors(signal) {
     if (!API_KEY) return Promise.reject(new Error('MISSING_KEY'));
 
+    var daily = buildDailyRanges(DAY_COUNT);
     var body = new URLSearchParams();
     body.set('api_key', API_KEY);
     body.set('format', 'json');
     body.set('logs', '1');
     body.set('logs_limit', '50');
     body.set('response_times', '1');
-    body.set('response_times_limit', '1');
+    body.set('response_times_limit', String(LATENCY_BUCKETS));
+    body.set('response_times_average', String(LATENCY_AVG_MIN));
     body.set('custom_uptime_ratios', '1-7-30');
+    body.set('custom_uptime_ranges', daily.query);
 
     return fetch(API_URL, {
       method: 'POST',
@@ -384,7 +545,7 @@
         if (message && typeof message === 'object') message = message.message;
         throw new Error(message || 'API_ERROR');
       }
-      return normalize(payload);
+      return normalize(payload, daily.starts);
     });
   }
 
