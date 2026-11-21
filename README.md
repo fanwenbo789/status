@@ -1,6 +1,6 @@
 # status
 
-微风小栈 的服务状态页，浏览器直接读取 UptimeRobot 的只读 API。
+BREEZE BLOG 的服务状态页，浏览器直接读取 UptimeRobot 的只读 API。
 
 线上：<https://fanwenbo789.github.io/status/>
 
