@@ -1,6 +1,62 @@
 {
  "events": [
   {
+   "monitor": "主站",
+   "type": 2,
+   "text": "恢复",
+   "datetime": 1795239321,
+   "reason": "OK"
+  },
+  {
+   "monitor": "主站",
+   "type": 1,
+   "text": "故障",
+   "datetime": 1795237676,
+   "reason": "DNS Resolving problem"
+  },
+  {
+   "monitor": "主站",
+   "type": 2,
+   "text": "恢复",
+   "datetime": 1795236958,
+   "reason": "OK"
+  },
+  {
+   "monitor": "主站",
+   "type": 1,
+   "text": "故障",
+   "datetime": 1795236654,
+   "reason": "DNS Resolving problem"
+  },
+  {
+   "monitor": "主站",
+   "type": 2,
+   "text": "恢复",
+   "datetime": 1795235936,
+   "reason": "OK"
+  },
+  {
+   "monitor": "主站",
+   "type": 1,
+   "text": "故障",
+   "datetime": 1795235624,
+   "reason": "DNS Resolving problem"
+  },
+  {
+   "monitor": "主站",
+   "type": 2,
+   "text": "恢复",
+   "datetime": 1795235251,
+   "reason": "OK"
+  },
+  {
+   "monitor": "主站",
+   "type": 1,
+   "text": "故障",
+   "datetime": 1795234944,
+   "reason": "DNS Resolving problem"
+  },
+  {
    "monitor": "追番数据同步",
    "type": 2,
    "text": "恢复",
