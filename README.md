@@ -41,7 +41,7 @@ UptimeRobot v2 对 `get*` 接口返回 `access-control-allow-origin: *`，所以
 
 ## 近期事件接口
 
-`events.json` 由 `.github/workflows/events.yml` 每 5 分钟从 UptimeRobot 拉取并更新，供主站首页「近期事件」读取；没有新事件时不会产生提交。
+`events.json` 由 `.github/workflows/events.yml` 每小时从 UptimeRobot 拉取并更新，供主站首页「近期事件」读取；没有新事件时不会产生提交。
 
 ## 部署
 
