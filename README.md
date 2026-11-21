@@ -1,6 +1,6 @@
 # status
 
-赤羽 Akabane 的服务状态页，浏览器直接读取 UptimeRobot 的只读 API。
+微风小栈 的服务状态页，浏览器直接读取 UptimeRobot 的只读 API。
 
 线上：<https://fanwenbo789.github.io/status/>
 
@@ -54,7 +54,7 @@ UptimeRobot v2 对 `get*` 接口返回 `access-control-allow-origin: *`，所以
 - `assets/`
 - `.nojekyll`（GitHub Pages）
 
-可以部署到 GitHub Pages 根目录，或自定义域名如 `status.akabane.cn`。
+可以部署到 GitHub Pages 根目录，或自定义域名如 `status.breeze.moe`。
 
 ## 说明
 

@@ -47,7 +47,7 @@ def fetch_monitors(key):
         headers={
             "Content-Type": "application/x-www-form-urlencoded",
             "Cache-Control": "no-cache",
-            "User-Agent": "akabane-status-events/1.0",
+            "User-Agent": "breeze-status-events/1.0",
         },
         method="POST",
     )
