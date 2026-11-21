@@ -1,0 +1,20 @@
+{
+ "events": [
+  {
+   "monitor": "追番数据同步",
+   "type": 2,
+   "text": "恢复",
+   "datetime": 1795223945,
+   "duration": 4543,
+   "reason": "OK"
+  },
+  {
+   "monitor": "追番数据同步",
+   "type": 1,
+   "text": "故障",
+   "datetime": 1795223825,
+   "duration": 120,
+   "reason": "Keyword Found"
+  }
+ ]
+}

@@ -39,6 +39,10 @@ window.STATUS_CONFIG = {
 
 UptimeRobot v2 对 `get*` 接口返回 `access-control-allow-origin: *`，所以浏览器可以直接请求。免费额度约 10 请求/分钟，默认 60 秒刷新，单标签页足够。
 
+## 近期事件接口
+
+`events.json` 由 `.github/workflows/events.yml` 每 5 分钟从 UptimeRobot 拉取并更新，供主站首页「近期事件」读取；没有新事件时不会产生提交。
+
 ## 部署
 
 纯静态站点，无构建步骤。需要发布的文件：
