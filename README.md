@@ -20,7 +20,7 @@ python3 serve.py
 页面每 60 秒调用一次 UptimeRobot v2 `getMonitors`：
 
 - `logs=1&logs_limit=50`
-- `response_times=1&response_times_limit=48&response_times_average=30`
+- `response_times=1&response_times_limit=288&response_times_average=5`
 - `custom_uptime_ratios=1-7-30`
 - `custom_uptime_ranges=最近 30 个自然日的区间`
 

@@ -21,9 +21,11 @@
     99: { text: '暂停监控', cls: 'paused' }
   };
   var DAY_COUNT = 30;
-  var LATENCY_BUCKETS = 48;
-  var LATENCY_AVG_MIN = 30;
-  var state = { data: null, loading: false, timer: null, signature: null };
+  var LATENCY_BUCKETS = 288;
+  var LATENCY_AVG_MIN = 5;
+  var state = { data: null, loading: false, timer: null, signature: null, lastLoad: 0 };
+  var tooltip = null;
+  var tooltipCleanup = null;
 
   function el(tag, className, text) {
     var node = document.createElement(tag);
@@ -34,6 +36,51 @@
 
   function clear(node) {
     while (node.firstChild) node.removeChild(node.firstChild);
+  }
+
+  function ensureTooltip() {
+    if (tooltip) return tooltip;
+    tooltip = document.createElement('div');
+    tooltip.id = 'status-tooltip';
+    tooltip.className = 'status-tooltip';
+    tooltip.setAttribute('role', 'status');
+    tooltip.setAttribute('aria-live', 'polite');
+    tooltip.hidden = true;
+    document.body.appendChild(tooltip);
+    return tooltip;
+  }
+
+  function hideTooltip() {
+    if (tooltip) tooltip.hidden = true;
+    if (tooltipCleanup) {
+      var cleanup = tooltipCleanup;
+      tooltipCleanup = null;
+      cleanup();
+    }
+  }
+
+  function showTooltip(nodes, x, y, cleanup) {
+    hideTooltip();
+    var node = ensureTooltip();
+    tooltipCleanup = cleanup || null;
+    clear(node);
+    nodes.forEach(function (child) { node.appendChild(child); });
+    node.hidden = false;
+    node.style.visibility = 'hidden';
+    node.style.left = '0px';
+    node.style.top = '0px';
+    var rect = node.getBoundingClientRect();
+    var margin = 8;
+    var left = x - rect.width / 2;
+    left = Math.max(margin, Math.min(window.innerWidth - rect.width - margin, left));
+    var top = y - rect.height - 10;
+    if (top < margin) top = y + 14;
+    if (top + rect.height > window.innerHeight - margin) {
+      top = Math.max(margin, window.innerHeight - rect.height - margin);
+    }
+    node.style.left = left + 'px';
+    node.style.top = top + 'px';
+    node.style.visibility = 'visible';
   }
 
   function svgEl(tag, attrs) {
@@ -71,7 +118,8 @@
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: false
     });
   }
 
@@ -91,7 +139,8 @@
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: false
     });
   }
 
@@ -157,9 +206,9 @@
   }
 
   function parseDays(monitor, starts, ends) {
+    if (!starts || !starts.length) return [];
     var raw = monitor.custom_uptime_ranges;
-    if (!raw || !starts || !starts.length) return [];
-    var parts = String(raw).split('-');
+    var parts = raw ? String(raw).split('-') : [];
     var created = Number(monitor.create_datetime) || 0;
     return starts.map(function (start, index) {
       var text = String(parts[index] === undefined ? '' : parts[index]).trim();
@@ -204,11 +253,15 @@
     (monitor.logs || []).forEach(function (log) {
       var datetime = Number(log && log.datetime);
       if (!isFinite(datetime) || datetime <= 0) return;
+      var reason = log.reason;
+      if (reason && typeof reason === 'object') {
+        reason = reason.detail || reason.message || reason.code || '';
+      }
       logs.push({
         type: Number(log.type),
         datetime: datetime,
         duration: Number(log.duration) || 0,
-        reason: log.reason || ''
+        reason: reason || ''
       });
     });
     logs.sort(function (a, b) { return b.datetime - a.datetime; });
@@ -236,6 +289,22 @@
     return 'up';
   }
 
+  function signatureFor(monitors) {
+    return JSON.stringify(monitors.map(function (monitor) {
+      return {
+        id: monitor.id,
+        name: monitor.name,
+        url: monitor.url,
+        status: monitor.status,
+        uptime: monitor.uptime,
+        days: (monitor.days || []).map(function (day) { return [day.start, day.uptime]; }),
+        response_time: monitor.response_time,
+        latency: (monitor.latency || []).map(function (point) { return [point.datetime, point.value]; }),
+        logs: monitor.logs
+      };
+    }));
+  }
+
   function normalize(payload, starts, ends) {
     var monitors = (payload.monitors || []).map(function (monitor) {
       return normalizeMonitor(monitor, starts, ends);
@@ -245,6 +314,16 @@
       overall: overallFor(monitors),
       monitors: monitors
     };
+  }
+
+  function applyOverallStatus(overall) {
+    var box = $('#overall');
+    box.className = 'overall is-' + overall;
+    var card = box.closest('.overall-card');
+    if (card) {
+      card.classList.remove('is-up', 'is-partial', 'is-down', 'is-empty');
+      card.classList.add('is-' + overall);
+    }
   }
 
   function renderOverall(data, monitors) {
@@ -260,56 +339,120 @@
       down: '服务出现故障',
       empty: '暂无监控数据'
     };
-    box.className = 'overall is-' + overall;
-    text.textContent = labels[overall] || '状态未知';
+    applyOverallStatus(overall);
+    var label = labels[overall] || '状态未知';
+    if (text.textContent !== label) text.textContent = label;
     $('#updated').textContent = formatGenerated(data && data.generated);
+  }
+
+  function summarizeDays(days) {
+    var values = [];
+    days.forEach(function (day) {
+      if (day.uptime !== null) values.push(day.uptime);
+    });
+    if (!values.length) return null;
+    return values.reduce(function (sum, value) { return sum + value; }, 0) / values.length;
   }
 
   function renderDays(monitor) {
     var days = monitor.days || [];
-    var summary = monitor.uptime && number(monitor.uptime.month);
+    var hasGaps = days.some(function (day) { return day.uptime === null; });
+    var summary = summarizeDays(days);
     var box = el('div', 'day-status');
     var head = el('div', 'day-status-head');
-    head.appendChild(el('span', 'day-status-label', '30 天可用率'));
+    head.appendChild(el('span', 'day-status-label', hasGaps ? '自创建可用率' : '30 天可用率'));
     head.appendChild(el('span', 'day-status-value', formatPct(summary)));
     box.appendChild(head);
 
     var bars = el('div', 'day-bars');
     bars.setAttribute('role', 'group');
     bars.setAttribute('aria-label', '最近 30 天状态');
-    var detail = el('div', 'day-detail');
-    detail.setAttribute('aria-live', 'polite');
+    var buttons = [];
 
-    function selectDay(day, button) {
-      var status = dayStatus(day.uptime);
-      clear(detail);
-      detail.appendChild(el('span', 'day-detail-status is-' + status.cls, status.text));
-      detail.appendChild(el('span', 'day-detail-time', formatShortTime(day.start) + ' – ' + formatShortTime(day.end)));
-      detail.appendChild(el('span', 'day-detail-value', day.uptime === null ? '—' : formatPct(day.uptime)));
-      var buttons = bars.querySelectorAll('.day-bar');
+    function clearSelection() {
       for (var i = 0; i < buttons.length; i++) {
-        var selected = buttons[i] === button;
-        buttons[i].setAttribute('aria-pressed', selected ? 'true' : 'false');
-        buttons[i].classList.toggle('is-selected', selected);
+        buttons[i].classList.remove('is-selected');
+        buttons[i].setAttribute('aria-pressed', 'false');
       }
     }
 
-    days.forEach(function (day) {
+    function selectDay(day, button, event) {
+      var status = dayStatus(day.uptime);
+      var nodes = [
+        el('span', 'tooltip-status is-' + status.cls, status.text),
+        el('span', 'tooltip-time', formatShortTime(day.start) + ' – ' + formatShortTime(day.end)),
+        el('span', 'tooltip-value', day.uptime === null ? '—' : formatPct(day.uptime))
+      ];
+      var rect = button.getBoundingClientRect();
+      var x = event && event.clientX > 0 ? event.clientX : rect.left + rect.width / 2;
+      var y = event && event.clientY > 0 ? event.clientY : rect.top;
+      showTooltip(nodes, x, y, clearSelection);
+      clearSelection();
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].tabIndex = buttons[i] === button ? 0 : -1;
+      }
+      button.classList.add('is-selected');
+      button.setAttribute('aria-pressed', 'true');
+      try { button.focus({ preventScroll: true }); } catch (e) { button.focus(); }
+    }
+
+    days.forEach(function (day, index) {
       var status = dayStatus(day.uptime);
       var button = document.createElement('button');
       button.type = 'button';
       button.className = 'day-bar is-' + status.cls;
       button.setAttribute('aria-pressed', 'false');
+      button.tabIndex = index === days.length - 1 ? 0 : -1;
       var range = formatShortTime(day.start) + ' – ' + formatShortTime(day.end);
       var text = status.text + ' · ' + range;
       if (day.uptime !== null) text += ' · ' + formatPct(day.uptime);
-      button.title = text;
       button.setAttribute('aria-label', text);
-      button.addEventListener('click', function () {
-        selectDay(day, button);
+      button.addEventListener('focus', function () {
+        for (var i = 0; i < buttons.length; i++) {
+          buttons[i].tabIndex = buttons[i] === button ? 0 : -1;
+        }
       });
+      buttons.push(button);
       bars.appendChild(button);
     });
+
+    bars.addEventListener('click', function (event) {
+      if (!days.length) return;
+      var active = document.activeElement;
+      var index;
+      if (event.detail === 0 && active && active.classList.contains('day-bar') && bars.contains(active)) {
+        index = buttons.indexOf(active);
+      } else {
+        var rect = bars.getBoundingClientRect();
+        var ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 1;
+        index = Math.floor(ratio * days.length);
+      }
+      index = Math.max(0, Math.min(days.length - 1, index));
+      selectDay(days[index], buttons[index], event);
+    });
+
+    bars.addEventListener('keydown', function (event) {
+      var active = document.activeElement;
+      if (!active || !active.classList.contains('day-bar')) return;
+      var index = buttons.indexOf(active);
+      if (index < 0) return;
+      var next = null;
+      if (event.key === 'ArrowRight') next = Math.min(buttons.length - 1, index + 1);
+      else if (event.key === 'ArrowLeft') next = Math.max(0, index - 1);
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = buttons.length - 1;
+      if (next !== null) {
+        event.preventDefault();
+        buttons[next].focus();
+      }
+    });
+
+    bars.addEventListener('focusout', function (event) {
+      var next = event.relatedTarget;
+      if (next && bars.contains(next)) return;
+      hideTooltip();
+    });
+
     box.appendChild(bars);
 
     var axis = el('div', 'day-axis');
@@ -317,30 +460,19 @@
     axis.appendChild(el('span', null, '30 天前'));
     axis.appendChild(el('span', null, '今天'));
     box.appendChild(axis);
-
-    if (days.length) {
-      selectDay(days[days.length - 1], bars.children[days.length - 1]);
-    } else {
-      detail.appendChild(el('span', 'day-detail-time', '暂无 30 天数据'));
-    }
-    box.appendChild(detail);
-
     return box;
   }
 
   function renderLatency(monitor) {
+    var points = monitor.latency || [];
+    if (points.length < 2) return null;
+
     var box = el('div', 'latency');
     var avg = number(monitor.response_time);
     var head = el('div', 'latency-head');
     head.appendChild(el('span', 'latency-label', '24 小时延迟'));
     head.appendChild(el('span', 'latency-value', avg === null ? '—' : '平均 ' + Math.round(avg) + ' ms'));
     box.appendChild(head);
-
-    var points = monitor.latency || [];
-    if (points.length < 2) {
-      box.appendChild(el('p', 'latency-empty', '数据积累中'));
-      return box;
-    }
 
     var width = 300;
     var height = 48;
@@ -407,14 +539,6 @@
     }
 
     var last = coords[coords.length - 1];
-    svg.appendChild(svgEl('line', {
-      class: 'latency-now',
-      x1: last.x.toFixed(1),
-      y1: 0,
-      x2: last.x.toFixed(1),
-      y2: height
-    }));
-
     var cursor = svgEl('line', {
       class: 'latency-cursor',
       x1: last.x.toFixed(1),
@@ -435,18 +559,23 @@
     axis.appendChild(el('span', null, formatShortTime(points[points.length - 1].datetime)));
     box.appendChild(axis);
 
-    var detail = el('div', 'latency-detail');
-    detail.setAttribute('aria-live', 'polite');
-    box.appendChild(detail);
-
     var selected = coords.length - 1;
-    function selectPoint(index) {
+    function selectPoint(index, clientX, clientY) {
       selected = Math.max(0, Math.min(coords.length - 1, index));
       var point = coords[selected];
+      var rect = svg.getBoundingClientRect();
+      var x = (typeof clientX === 'number' && clientX > 0) ? clientX : rect.left + (point.x / width) * rect.width;
+      var y = (typeof clientY === 'number' && clientY > 0) ? clientY : rect.top + (point.y / height) * rect.height;
+      var nodes = [
+        el('span', 'tooltip-time', formatShortTime(point.datetime)),
+        el('span', 'tooltip-value', Math.round(point.value) + ' ms')
+      ];
+      showTooltip(nodes, x, y, function () {
+        cursor.style.opacity = '0';
+      });
       cursor.setAttribute('x1', point.x.toFixed(1));
       cursor.setAttribute('x2', point.x.toFixed(1));
       cursor.style.opacity = '1';
-      detail.textContent = formatShortTime(point.datetime) + ' · ' + Math.round(point.value) + ' ms';
     }
 
     svg.addEventListener('click', function (event) {
@@ -457,7 +586,7 @@
       for (var i = 1; i < coords.length; i++) {
         if (Math.abs(coords[i].x - x) < Math.abs(coords[nearest].x - x)) nearest = i;
       }
-      selectPoint(nearest);
+      selectPoint(nearest, event.clientX, event.clientY);
     });
 
     svg.addEventListener('keydown', function (event) {
@@ -466,8 +595,32 @@
       selectPoint(selected + (event.key === 'ArrowRight' ? 1 : -1));
     });
 
-    selectPoint(selected);
+    svg.addEventListener('focusout', function (event) {
+      var next = event.relatedTarget;
+      if (next && svg.contains(next)) return;
+      hideTooltip();
+    });
+
     return box;
+  }
+
+  function globeIcon() {
+    var svg = svgEl('svg', {
+      viewBox: '0 0 24 24',
+      width: '16',
+      height: '16',
+      'aria-hidden': 'true'
+    });
+    svg.appendChild(svgEl('circle', {
+      cx: '12', cy: '12', r: '8.5',
+      fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7'
+    }));
+    svg.appendChild(svgEl('path', {
+      d: 'M3.5 12h17M12 3.5c2.4 2.3 3.7 5.2 3.7 8.5s-1.3 6.2-3.7 8.5c-2.4-2.3-3.7-5.2-3.7-8.5S9.6 5.8 12 3.5z',
+      fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7',
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round'
+    }));
+    return svg;
   }
 
   function renderMonitor(monitor) {
@@ -476,40 +629,79 @@
     card.setAttribute('variant', 'elevated');
     var head = el('div', 'monitor-head');
     var title = el('div', 'monitor-title');
-    title.appendChild(el('h3', 'monitor-name', monitor.name || '未命名监控'));
+    var titleRow = el('div', 'monitor-title-row');
 
     if (monitor.url) {
-      var display = String(monitor.url).replace(/^https?:\/\//, '').replace(/\/$/, '');
-      var link = el('a', 'monitor-url', display);
-      link.href = monitor.url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      title.appendChild(link);
+      var globe = el('a', 'monitor-globe');
+      globe.href = monitor.url;
+      globe.target = '_blank';
+      globe.rel = 'noopener noreferrer';
+      globe.setAttribute('aria-label', '打开 ' + (monitor.name || '监控') + ' 网站');
+      globe.appendChild(globeIcon());
+      titleRow.appendChild(globe);
     }
-
-    var status = statusFor(monitor.status);
-    var pill = el('span', 'status-pill is-' + status.cls);
-    pill.appendChild(el('span', 'status-dot'));
-    pill.appendChild(document.createTextNode(status.text));
+    titleRow.appendChild(el('h3', 'monitor-name', monitor.name || '未命名监控'));
+    title.appendChild(titleRow);
 
     head.appendChild(title);
-    head.appendChild(pill);
     card.appendChild(head);
     card.appendChild(renderDays(monitor));
-    card.appendChild(renderLatency(monitor));
+    var latency = renderLatency(monitor);
+    if (latency) card.appendChild(latency);
     return card;
   }
 
-  function renderMonitors(monitors) {
+  function renderMonitors(monitors, animate) {
     var grid = $('#monitors');
+    var active = document.activeElement;
+    var focus = null;
+    if (active && grid.contains(active)) {
+      var activeCard = active.closest('.monitor-card');
+      if (activeCard) {
+        var oldCards = Array.prototype.slice.call(grid.querySelectorAll('.monitor-card'));
+        var cardIndex = oldCards.indexOf(activeCard);
+        if (active.classList.contains('day-bar')) {
+          var oldBars = Array.prototype.slice.call(activeCard.querySelectorAll('.day-bar'));
+          focus = { card: cardIndex, kind: 'day', index: oldBars.indexOf(active) };
+        } else if (active.classList.contains('latency-chart')) {
+          focus = { card: cardIndex, kind: 'chart' };
+        } else if (active.classList.contains('monitor-globe')) {
+          focus = { card: cardIndex, kind: 'globe' };
+        }
+      }
+    }
+
+    hideTooltip();
     clear(grid);
     if (!monitors.length) {
       grid.appendChild(el('p', 'empty', '还没有监控数据。'));
       return;
     }
-    monitors.forEach(function (monitor) {
-      grid.appendChild(renderMonitor(monitor));
+    monitors.forEach(function (monitor, index) {
+      var card = renderMonitor(monitor);
+      if (animate) card.style.animationDelay = (index * 45) + 'ms';
+      else card.style.animation = 'none';
+      grid.appendChild(card);
     });
+
+    if (focus && focus.card >= 0) {
+      var newCards = grid.querySelectorAll('.monitor-card');
+      var targetCard = newCards[focus.card];
+      if (targetCard) {
+        var target = null;
+        if (focus.kind === 'day') {
+          var newBars = targetCard.querySelectorAll('.day-bar');
+          target = newBars[Math.min(focus.index, newBars.length - 1)];
+        } else if (focus.kind === 'chart') {
+          target = targetCard.querySelector('.latency-chart');
+        } else if (focus.kind === 'globe') {
+          target = targetCard.querySelector('.monitor-globe');
+        }
+        if (target) {
+          try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
+        }
+      }
+    }
   }
 
   function renderEvents(monitors) {
@@ -559,7 +751,8 @@
 
   function render(data) {
     var monitors = Array.isArray(data.monitors) ? data.monitors : [];
-    var signature = JSON.stringify(monitors);
+    var signature = signatureFor(monitors);
+    var hadData = !!state.data;
     var unchanged = state.data && state.signature === signature;
     state.data = data;
     $('#error').hidden = true;
@@ -567,7 +760,7 @@
     renderOverall(data, monitors);
     if (unchanged) return;
     state.signature = signature;
-    renderMonitors(monitors);
+    renderMonitors(monitors, !hadData);
     renderEvents(monitors);
   }
 
@@ -576,7 +769,7 @@
     box.textContent = message;
     box.hidden = false;
     if (!state.data) {
-      $('#overall').className = 'overall is-down';
+      applyOverallStatus('down');
       $('.overall-text').textContent = '状态获取失败';
       $('#updated').textContent = '最后更新：—';
       clear($('#monitors'));
@@ -644,6 +837,9 @@
 
   function load() {
     if (state.loading) return;
+    var now = Date.now();
+    if (state.lastLoad && now - state.lastLoad < 30000) return;
+    state.lastLoad = now;
     state.loading = true;
     var controller = window.AbortController ? new AbortController() : null;
     var timer = controller ? setTimeout(function () { controller.abort(); }, 10000) : null;
@@ -689,10 +885,37 @@
     });
   }
 
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    if (target && target.closest && (target.closest('.day-bars') || target.closest('.latency-chart'))) return;
+    hideTooltip();
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') hideTooltip();
+  });
+  window.addEventListener('scroll', hideTooltip, true);
+  window.addEventListener('resize', hideTooltip);
+
   var year = $('#year');
   if (year) year.textContent = String(new Date().getFullYear());
+  function startTimer() {
+    if (state.timer) clearInterval(state.timer);
+    state.timer = setInterval(load, REFRESH_MS);
+  }
+
   initTheme();
   load();
-  state.timer = setInterval(load, REFRESH_MS);
+  startTimer();
   window.addEventListener('online', load);
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      if (state.timer) {
+        clearInterval(state.timer);
+        state.timer = null;
+      }
+    } else {
+      load();
+      startTimer();
+    }
+  });
 })();
