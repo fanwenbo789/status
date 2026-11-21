@@ -1,6 +1,13 @@
 {
  "events": [
   {
+   "monitor": "内网穿透",
+   "type": 99,
+   "text": "暂停监控",
+   "datetime": 1795251633,
+   "reason": "Monitor paused"
+  },
+  {
    "monitor": "主站",
    "type": 2,
    "text": "恢复",
