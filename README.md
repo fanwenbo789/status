@@ -24,7 +24,7 @@ python3 serve.py
 - `custom_uptime_ratios=1-7-30`
 - `custom_uptime_ranges=最近 30 个自然日的区间`
 
-30 天状态条中，监控创建前或没有数据的日期显示为灰色。
+30 天状态条中，监控创建前或没有数据的日期显示为灰色。点击 30 天格子查看当天状态和时间，点击延迟曲线查看采样点和时间。
 
 API key 在 `config.js`：
 

@@ -75,6 +75,14 @@
     });
   }
 
+  function formatShortTime(seconds) {
+    var date = new Date(Number(seconds) * 1000);
+    if (isNaN(date.getTime())) return '—';
+    var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+    return (date.getMonth() + 1) + '/' + date.getDate() + ' ' +
+      pad(date.getHours()) + ':' + pad(date.getMinutes());
+  }
+
   function formatGenerated(value) {
     var date = value ? new Date(value) : new Date();
     if (isNaN(date.getTime())) date = new Date();
@@ -89,6 +97,13 @@
 
   function statusFor(value) {
     return STATUS[value] || { text: '未知', cls: 'unknown' };
+  }
+
+  function dayStatus(value) {
+    if (value === null) return { text: 'No data', cls: 'empty' };
+    if (value >= 99.995) return { text: 'Up', cls: 'up' };
+    if (value <= 0.005) return { text: 'Down', cls: 'down' };
+    return { text: 'Partial', cls: 'partial' };
   }
 
   function safeUrl(value) {
@@ -109,21 +124,23 @@
   }
 
   function buildDailyRanges(count) {
-    var day = 86400;
     var today = new Date();
     today.setHours(0, 0, 0, 0);
-    var todayStart = Math.floor(today.getTime() / 1000);
     var now = Math.floor(Date.now() / 1000);
     var starts = [];
+    var ends = [];
     var ranges = [];
     for (var i = count - 1; i >= 0; i--) {
-      var start = todayStart - i * day;
-      var end = Math.min(start + day, now);
+      var startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i, 0, 0, 0, 0);
+      var endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i + 1, 0, 0, 0, 0);
+      var start = Math.floor(startDate.getTime() / 1000);
+      var end = Math.min(Math.floor(endDate.getTime() / 1000), now);
       if (end <= start) end = start + 1;
       starts.push(start);
+      ends.push(end);
       ranges.push(start + '_' + end);
     }
-    return { query: ranges.join('-'), starts: starts };
+    return { query: ranges.join('-'), starts: starts, ends: ends };
   }
 
   function parseUptimes(monitor) {
@@ -139,7 +156,7 @@
     return { day: values[0], week: values[1], month: values[2] };
   }
 
-  function parseDays(monitor, starts) {
+  function parseDays(monitor, starts, ends) {
     var raw = monitor.custom_uptime_ranges;
     if (!raw || !starts || !starts.length) return [];
     var parts = String(raw).split('-');
@@ -148,8 +165,9 @@
       var text = String(parts[index] === undefined ? '' : parts[index]).trim();
       var value = text === '' ? null : Number(text);
       if (!isFinite(value) || value < 0) value = null;
-      if (created > 0 && start + 86400 <= created) value = null;
-      return { start: start, uptime: value };
+      var end = ends && ends[index] !== undefined ? ends[index] : start + 86400;
+      if (created > 0 && end <= created) value = null;
+      return { start: start, end: end, uptime: value };
     });
   }
 
@@ -197,14 +215,14 @@
     return logs.slice(0, 20);
   }
 
-  function normalizeMonitor(monitor, starts) {
+  function normalizeMonitor(monitor, starts, ends) {
     return {
       id: monitor.id,
       name: monitor.friendly_name || '未命名监控',
       url: safeUrl(monitor.url),
       status: normalizeStatus(monitor.status),
       uptime: parseUptimes(monitor),
-      days: parseDays(monitor, starts),
+      days: parseDays(monitor, starts, ends),
       response_time: parseResponseTime(monitor),
       latency: parseLatency(monitor),
       logs: normalizeLogs(monitor)
@@ -218,9 +236,9 @@
     return 'up';
   }
 
-  function normalize(payload, starts) {
+  function normalize(payload, starts, ends) {
     var monitors = (payload.monitors || []).map(function (monitor) {
-      return normalizeMonitor(monitor, starts);
+      return normalizeMonitor(monitor, starts, ends);
     });
     return {
       generated: new Date().toISOString(),
@@ -257,20 +275,40 @@
     box.appendChild(head);
 
     var bars = el('div', 'day-bars');
-    bars.setAttribute('aria-hidden', 'true');
-    days.forEach(function (day, index) {
-      var value = day.uptime;
-      var bar = el('span', 'day-bar');
-      if (value === null) bar.classList.add('is-empty');
-      else if (value < 99) bar.classList.add('is-down');
-      else if (value < 99.9) bar.classList.add('is-partial');
-      else bar.classList.add('is-up');
+    bars.setAttribute('role', 'group');
+    bars.setAttribute('aria-label', '最近 30 天状态');
+    var detail = el('div', 'day-detail');
+    detail.setAttribute('aria-live', 'polite');
 
-      var date = new Date(day.start * 1000);
-      var label = (date.getMonth() + 1) + '/' + date.getDate();
-      var suffix = index === days.length - 1 ? '（今天，统计中）' : '';
-      bar.title = label + ' ' + (value === null ? '无数据' : formatPct(value)) + suffix;
-      bars.appendChild(bar);
+    function selectDay(day, button) {
+      var status = dayStatus(day.uptime);
+      clear(detail);
+      detail.appendChild(el('span', 'day-detail-status is-' + status.cls, status.text));
+      detail.appendChild(el('span', 'day-detail-time', formatShortTime(day.start) + ' – ' + formatShortTime(day.end)));
+      detail.appendChild(el('span', 'day-detail-value', day.uptime === null ? '—' : formatPct(day.uptime)));
+      var buttons = bars.querySelectorAll('.day-bar');
+      for (var i = 0; i < buttons.length; i++) {
+        var selected = buttons[i] === button;
+        buttons[i].setAttribute('aria-pressed', selected ? 'true' : 'false');
+        buttons[i].classList.toggle('is-selected', selected);
+      }
+    }
+
+    days.forEach(function (day) {
+      var status = dayStatus(day.uptime);
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'day-bar is-' + status.cls;
+      button.setAttribute('aria-pressed', 'false');
+      var range = formatShortTime(day.start) + ' – ' + formatShortTime(day.end);
+      var text = status.text + ' · ' + range;
+      if (day.uptime !== null) text += ' · ' + formatPct(day.uptime);
+      button.title = text;
+      button.setAttribute('aria-label', text);
+      button.addEventListener('click', function () {
+        selectDay(day, button);
+      });
+      bars.appendChild(button);
     });
     box.appendChild(bars);
 
@@ -279,6 +317,14 @@
     axis.appendChild(el('span', null, '30 天前'));
     axis.appendChild(el('span', null, '今天'));
     box.appendChild(axis);
+
+    if (days.length) {
+      selectDay(days[days.length - 1], bars.children[days.length - 1]);
+    } else {
+      detail.appendChild(el('span', 'day-detail-time', '暂无 30 天数据'));
+    }
+    box.appendChild(detail);
+
     if (days.some(function (day) { return day.uptime === null; })) {
       box.appendChild(el('p', 'day-note', '灰色为无数据'));
     }
@@ -314,7 +360,9 @@
     var coords = points.map(function (point, index) {
       return {
         x: pad + index * step,
-        y: height - pad - ((point.value - min) / span) * (height - pad * 2)
+        y: height - pad - ((point.value - min) / span) * (height - pad * 2),
+        value: point.value,
+        datetime: point.datetime
       };
     });
     var line = coords.map(function (point, index) {
@@ -329,7 +377,8 @@
       viewBox: '0 0 ' + width + ' ' + height,
       preserveAspectRatio: 'none',
       role: 'img',
-      'aria-label': '24 小时延迟曲线，平均 ' + (avg === null ? '未知' : Math.round(avg) + ' 毫秒')
+      tabindex: '0',
+      'aria-label': '24 小时延迟曲线，平均 ' + (avg === null ? '未知' : Math.round(avg) + ' 毫秒，使用左右方向键查看采样点')
     });
 
     var defs = svgEl('defs');
@@ -369,6 +418,15 @@
       y2: height
     }));
 
+    var cursor = svgEl('line', {
+      class: 'latency-cursor',
+      x1: last.x.toFixed(1),
+      y1: 0,
+      x2: last.x.toFixed(1),
+      y2: height
+    });
+    svg.appendChild(cursor);
+
     var title = svgEl('title');
     title.textContent = '最低 ' + Math.round(min) + ' ms / 最高 ' + Math.round(max) + ' ms';
     svg.appendChild(title);
@@ -376,9 +434,42 @@
 
     var axis = el('div', 'latency-axis');
     axis.setAttribute('aria-hidden', 'true');
-    axis.appendChild(el('span', null, formatTime(points[0].datetime)));
-    axis.appendChild(el('span', null, formatTime(points[points.length - 1].datetime)));
+    axis.appendChild(el('span', null, formatShortTime(points[0].datetime)));
+    axis.appendChild(el('span', null, formatShortTime(points[points.length - 1].datetime)));
     box.appendChild(axis);
+
+    var detail = el('div', 'latency-detail');
+    detail.setAttribute('aria-live', 'polite');
+    box.appendChild(detail);
+
+    var selected = coords.length - 1;
+    function selectPoint(index) {
+      selected = Math.max(0, Math.min(coords.length - 1, index));
+      var point = coords[selected];
+      cursor.setAttribute('x1', point.x.toFixed(1));
+      cursor.setAttribute('x2', point.x.toFixed(1));
+      cursor.style.opacity = '1';
+      detail.textContent = formatShortTime(point.datetime) + ' · ' + Math.round(point.value) + ' ms';
+    }
+
+    svg.addEventListener('click', function (event) {
+      var rect = svg.getBoundingClientRect();
+      if (!rect.width) return;
+      var x = ((event.clientX - rect.left) / rect.width) * width;
+      var nearest = 0;
+      for (var i = 1; i < coords.length; i++) {
+        if (Math.abs(coords[i].x - x) < Math.abs(coords[nearest].x - x)) nearest = i;
+      }
+      selectPoint(nearest);
+    });
+
+    svg.addEventListener('keydown', function (event) {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      selectPoint(selected + (event.key === 'ArrowRight' ? 1 : -1));
+    });
+
+    selectPoint(selected);
     return box;
   }
 
@@ -442,7 +533,7 @@
     var recent = logs.slice(0, 8);
     var box = $('#events');
     clear(box);
-    $('#event-count').textContent = recent.length ? recent.length + ' 条' : '';
+    $('#event-count').textContent = recent.length ? '(' + recent.length + ' 条)' : '';
     if (!recent.length) {
       box.appendChild(el('p', 'empty', '暂无近期事件。'));
       return;
@@ -475,7 +566,7 @@
     var unchanged = state.data && state.signature === signature;
     state.data = data;
     $('#error').hidden = true;
-    $('#monitor-count').textContent = monitors.length + ' 项';
+    $('#monitor-count').textContent = '(' + monitors.length + ' 项)';
     renderOverall(data, monitors);
     if (unchanged) return;
     state.signature = signature;
@@ -550,7 +641,7 @@
         if (message && typeof message === 'object') message = message.message;
         throw new Error(message || 'API_ERROR');
       }
-      return normalize(payload, daily.starts);
+      return normalize(payload, daily.starts, daily.ends);
     });
   }
 
